@@ -143,7 +143,7 @@ class DartPoseDataset(Dataset):
         
         return image, rotation
 
-def train_epoch(model, train_loader, optimizer, criterion, device, scheduler, epoch, output_dir):
+def train_epoch(model, train_loader, optimizer, criterion, device, scheduler):
     model.train()
     total_loss = 0
     num_batches = len(train_loader)
@@ -165,25 +165,6 @@ def train_epoch(model, train_loader, optimizer, criterion, device, scheduler, ep
             scheduler.step()
         
         total_loss += loss.item()
-        
-        # Visualize every 10 batches
-        if batch_idx % 10 == 0:
-            with torch.no_grad():
-                # Get first image from batch
-                input_img = data[0]
-                output_img = output[0]
-                true_rot = target[0].cpu().numpy()
-                
-                # Get predicted rotation from latent space
-                pred_rot = model.rotation_head(latent[0]).cpu().numpy()
-                
-                # Visualize
-                visualize_prediction(
-                    input_img, output_img,
-                    true_rot, pred_rot,
-                    epoch, batch_idx,
-                    output_dir
-                )
         
         # Print batch progress
         if batch_idx % 10 == 0:
@@ -223,8 +204,6 @@ def main():
     
     # Create output directories
     os.makedirs(args.output_dir, exist_ok=True)
-    vis_dir = os.path.join(args.output_dir, 'visualizations')
-    os.makedirs(vis_dir, exist_ok=True)
     
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -284,14 +263,23 @@ def main():
     best_val_loss = float('inf')
     start_time = time.time()
     
+    # Initialize loss history
+    train_losses = []
+    val_losses = []
+    
+    print("\nStarting training...")
+    print("=" * 50)
+    
     for epoch in range(args.epochs):
         epoch_start_time = time.time()
         
         # Train
-        train_loss = train_epoch(model, train_loader, optimizer, criterion, device, scheduler, epoch, vis_dir)
+        train_loss = train_epoch(model, train_loader, optimizer, criterion, device, scheduler)
+        train_losses.append(train_loss)
         
         # Validate
         val_loss = validate(model, val_loader, criterion, device)
+        val_losses.append(val_loss)
         
         # Calculate epoch time
         epoch_time = time.time() - epoch_start_time
@@ -331,9 +319,28 @@ def main():
             print(f'Saved best model to {best_model_path}')
     
     total_time = time.time() - start_time
-    print(f'\nTraining complete!')
-    print(f'Total time: {total_time/60:.1f} minutes')
+    
+    # Print final training summary
+    print("\nTraining Summary:")
+    print("=" * 50)
+    print(f'Total training time: {total_time/60:.1f} minutes')
     print(f'Best validation loss: {best_val_loss:.6f}')
+    print("\nLoss History:")
+    print("=" * 50)
+    print("Epoch | Train Loss | Val Loss")
+    print("-" * 50)
+    for epoch, (train_loss, val_loss) in enumerate(zip(train_losses, val_losses)):
+        print(f"{epoch+1:5d} | {train_loss:10.6f} | {val_loss:9.6f}")
+    
+    # Save loss history
+    history = {
+        'train_losses': train_losses,
+        'val_losses': val_losses,
+        'best_val_loss': best_val_loss,
+        'total_time': total_time
+    }
+    with open(os.path.join(args.output_dir, 'training_history.json'), 'w') as f:
+        json.dump(history, f, indent=2)
 
 if __name__ == '__main__':
     main() 
