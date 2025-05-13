@@ -8,7 +8,7 @@ import sys
 from PIL import Image
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
-from term_image.image import ImageIterator
+from term_image.image import ImageIterator, ImageSource
 from io import BytesIO
 
 # Add src to path for imports
@@ -75,14 +75,18 @@ def visualize_prediction(input_img, output_img, true_rot, pred_rot, reconstructi
         input_pil.save(input_buffer, format='PNG')
         output_pil.save(output_buffer, format='PNG')
         
+        # Reset buffer positions
+        input_buffer.seek(0)
+        output_buffer.seek(0)
+        
         # Display in terminal
         print("\nInput Image:")
         print("=" * 50)
-        ImageIterator.from_file(input_buffer).display()
+        ImageIterator(ImageSource.from_file(input_buffer)).display()
         
         print("\nReconstructed Image:")
         print("=" * 50)
-        ImageIterator.from_file(output_buffer).display()
+        ImageIterator(ImageSource.from_file(output_buffer)).display()
         
         print("\nLoss Information:")
         print("=" * 50)
