@@ -8,8 +8,6 @@ import sys
 from PIL import Image
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
-from term_image.image import ImageIterator, ImageSource
-from io import BytesIO
 
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -43,6 +41,28 @@ def euler_to_rotation_matrix(euler_angles):
     R = Rz @ Ry @ Rx
     return R
 
+def image_to_ascii(img_array, width=40):
+    """Convert image array to ASCII art."""
+    # Resize image to desired width while maintaining aspect ratio
+    height = int(width * img_array.shape[0] / img_array.shape[1])
+    img = Image.fromarray((img_array * 255).astype(np.uint8))
+    img = img.resize((width, height))
+    img_array = np.array(img) / 255.0
+    
+    # ASCII characters from darkest to brightest
+    ascii_chars = ' .:-=+*#%@'
+    
+    # Convert to grayscale
+    gray = np.mean(img_array, axis=2)
+    
+    # Convert to ASCII
+    ascii_art = []
+    for row in gray:
+        line = ''.join(ascii_chars[int(pixel * (len(ascii_chars) - 1))] for pixel in row)
+        ascii_art.append(line)
+    
+    return '\n'.join(ascii_art)
+
 def visualize_prediction(input_img, output_img, true_rot, pred_rot, reconstruction_loss, rotation_loss, use_terminal=False):
     """Visualize input, output, and rotation vectors."""
     # Convert tensors to numpy arrays
@@ -60,33 +80,18 @@ def visualize_prediction(input_img, output_img, true_rot, pred_rot, reconstructi
     output_img = np.clip(output_img, 0, 1)
     
     if use_terminal:
-        # Convert numpy arrays to PIL Images
-        input_pil = Image.fromarray((input_img * 255).astype(np.uint8))
-        output_pil = Image.fromarray((output_img * 255).astype(np.uint8))
-        
-        # Resize for terminal display (make them smaller)
-        terminal_size = (40, 40)  # Adjust based on your terminal size
-        input_pil = input_pil.resize(terminal_size)
-        output_pil = output_pil.resize(terminal_size)
-        
-        # Convert to bytes for term-image
-        input_buffer = BytesIO()
-        output_buffer = BytesIO()
-        input_pil.save(input_buffer, format='PNG')
-        output_pil.save(output_buffer, format='PNG')
-        
-        # Reset buffer positions
-        input_buffer.seek(0)
-        output_buffer.seek(0)
+        # Convert images to ASCII art
+        input_ascii = image_to_ascii(input_img)
+        output_ascii = image_to_ascii(output_img)
         
         # Display in terminal
         print("\nInput Image:")
         print("=" * 50)
-        ImageIterator(ImageSource.from_file(input_buffer)).display()
+        print(input_ascii)
         
         print("\nReconstructed Image:")
         print("=" * 50)
-        ImageIterator(ImageSource.from_file(output_buffer)).display()
+        print(output_ascii)
         
         print("\nLoss Information:")
         print("=" * 50)
@@ -143,7 +148,7 @@ def main():
     parser.add_argument('--datum_dir', type=str, required=True, help='Directory containing the example (e.g. data/renders/0000)')
     parser.add_argument('--image_size', type=int, default=256, help='Size to resize images to')
     parser.add_argument('--latent_dim', type=int, default=128, help='Dimension of latent space')
-    parser.add_argument('--term', action='store_true', help='Display images in terminal instead of matplotlib window')
+    parser.add_argument('--term', action='store_true', help='Display images in terminal using ASCII art')
     
     args = parser.parse_args()
     
