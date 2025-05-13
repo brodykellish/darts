@@ -25,9 +25,20 @@ def setup_scene(resolution=256):
     # Set up world background to black
     world = bpy.data.worlds["World"]
     world.use_nodes = True
-    bg = world.node_tree.nodes["Background"]
-    bg.inputs[0].default_value = (0, 0, 0, 1)  # Black background
-    bg.inputs[1].default_value = 1.0  # Strength
+    
+    # Clear existing nodes
+    world.node_tree.nodes.clear()
+    
+    # Create new nodes
+    bg = world.node_tree.nodes.new(type='ShaderNodeBackground')
+    output = world.node_tree.nodes.new(type='ShaderNodeOutputWorld')
+    
+    # Set background color to black
+    bg.inputs['Color'].default_value = (0, 0, 0, 1)  # Black background
+    bg.inputs['Strength'].default_value = 1.0  # Strength
+    
+    # Connect nodes
+    world.node_tree.links.new(bg.outputs['Background'], output.inputs['Surface'])
     
     # Ensure proper rendering of emissive materials
     scene.cycles.use_denoising = True
@@ -295,6 +306,7 @@ def add_rotation_vector(model, rotation_data):
     print(f"Arrow end: {arrow_end}")
     
     return arrow_obj
+
 def create_debug_grid():
     # Create a collection for debug objects
     debug_collection = bpy.data.collections.new("DebugGrid")

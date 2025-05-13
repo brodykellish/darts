@@ -109,6 +109,40 @@ def save_camera_params(camera, output_dir, index, image_res):
     with open(os.path.join(output_dir, fname), 'w') as f:
         json.dump(params, f, indent=2)
 
+def cleanup_materials():
+    """Remove all unused materials."""
+    for material in bpy.data.materials:
+        if not material.users:
+            bpy.data.materials.remove(material)
+
+def cleanup_meshes():
+    """Remove all unused meshes."""
+    for mesh in bpy.data.meshes:
+        if not mesh.users:
+            bpy.data.meshes.remove(mesh)
+
+def cleanup_lights():
+    """Remove all unused lights."""
+    for light in bpy.data.lights:
+        if not light.users:
+            bpy.data.lights.remove(light)
+
+def cleanup_scene():
+    """Clear all objects and unused data from the scene."""
+    # Remove all objects
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete()
+    
+    # Clean up unused data
+    cleanup_materials()
+    cleanup_meshes()
+    cleanup_lights()
+    
+    # Clear world nodes
+    world = bpy.data.worlds["World"]
+    world.use_nodes = True
+    world.node_tree.nodes.clear()
+
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='Render dataset from STL file')
@@ -135,7 +169,7 @@ def main():
     
     # Setup scene
     print("Initializing scene...")
-    clear_scene()
+    cleanup_scene()
     setup_scene(args.image_res)
     model = load_stl(args.stl_path)
     model = normalize_object(model)  # Normalize only once after loading
@@ -221,6 +255,9 @@ def main():
     bpy.data.objects.remove(origin_sphere)
     bpy.data.objects.remove(arrow_obj)
     model.data.materials.clear()
+    cleanup_materials()
+    cleanup_meshes()
+    cleanup_lights()
 
     # Generate renders
     print("\nGenerating renders...")
@@ -248,6 +285,11 @@ def main():
         bpy.data.objects.remove(light)
         if args.debug:
             remove_debug_helpers(debug_helpers)
+        # Clean up unused data every 10 iterations
+        if i % 10 == 0:
+            cleanup_materials()
+            cleanup_meshes()
+            cleanup_lights()
         # Update progress
         print_progress(i + 1, args.num_images, start_time)
     

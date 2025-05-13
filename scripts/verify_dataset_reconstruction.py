@@ -11,9 +11,9 @@ import json
 from mathutils import Vector, Euler
 import argparse
 from src.render.blender_utils import (
-    clear_scene, setup_scene, normalize_object, load_stl,
+    clear_scene, setup_scene, load_stl,
     set_camera, apply_rotation, apply_gray_material, add_basic_light,
-    render_to_file, add_rotation_vector, create_debug_grid, create_test_cube
+    render_to_file, add_rotation_vector, create_debug_grid
 )
 
 def main():
