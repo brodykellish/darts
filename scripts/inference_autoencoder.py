@@ -8,6 +8,8 @@ import sys
 from PIL import Image
 import torchvision.transforms as transforms
 import matplotlib.pyplot as plt
+from term_image.image import ImageIterator
+from io import BytesIO
 
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -41,7 +43,7 @@ def euler_to_rotation_matrix(euler_angles):
     R = Rz @ Ry @ Rx
     return R
 
-def visualize_prediction(input_img, output_img, true_rot, pred_rot, reconstruction_loss, rotation_loss):
+def visualize_prediction(input_img, output_img, true_rot, pred_rot, reconstruction_loss, rotation_loss, use_terminal=False):
     """Visualize input, output, and rotation vectors."""
     # Convert tensors to numpy arrays
     input_img = input_img.cpu().numpy().transpose(1, 2, 0)
@@ -57,48 +59,79 @@ def visualize_prediction(input_img, output_img, true_rot, pred_rot, reconstructi
     input_img = np.clip(input_img, 0, 1)
     output_img = np.clip(output_img, 0, 1)
     
-    # Create figure
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
-    
-    # Plot images
-    ax1.imshow(input_img)
-    ax1.set_title('Input Image')
-    ax1.axis('off')
-    
-    ax2.imshow(output_img)
-    ax2.set_title('Reconstructed Image')
-    ax2.axis('off')
-    
-    # Add rotation vectors
-    def draw_rotation_vector(ax, rot, color, label):
-        # Convert Euler angles to rotation matrix
-        rot_matrix = euler_to_rotation_matrix(rot)
+    if use_terminal:
+        # Convert numpy arrays to PIL Images
+        input_pil = Image.fromarray((input_img * 255).astype(np.uint8))
+        output_pil = Image.fromarray((output_img * 255).astype(np.uint8))
         
-        # Get transformed Z-axis
-        z_axis = np.array([0, 0, 1])
-        transformed_z = rot_matrix @ z_axis
+        # Resize for terminal display (make them smaller)
+        terminal_size = (40, 40)  # Adjust based on your terminal size
+        input_pil = input_pil.resize(terminal_size)
+        output_pil = output_pil.resize(terminal_size)
         
-        # Draw vector
-        ax.arrow(128, 128,  # Start at center
-                 transformed_z[0] * 50, transformed_z[1] * 50,  # Direction
-                 head_width=5, head_length=10, fc=color, ec=color,
-                 label=label)
-    
-    # Draw true rotation vector on input image
-    draw_rotation_vector(ax1, true_rot, 'red', 'True Rotation')
-    
-    # Draw predicted rotation vector on output image
-    draw_rotation_vector(ax2, pred_rot, 'green', 'Predicted Rotation')
-    
-    # Add legends
-    ax1.legend()
-    ax2.legend()
-    
-    # Add title with loss info
-    plt.suptitle(f'Reconstruction Loss: {reconstruction_loss:.6f}\nRotation Loss: {rotation_loss:.6f}')
-    
-    # Show plot
-    plt.show()
+        # Convert to bytes for term-image
+        input_buffer = BytesIO()
+        output_buffer = BytesIO()
+        input_pil.save(input_buffer, format='PNG')
+        output_pil.save(output_buffer, format='PNG')
+        
+        # Display in terminal
+        print("\nInput Image:")
+        print("=" * 50)
+        ImageIterator.from_file(input_buffer).display()
+        
+        print("\nReconstructed Image:")
+        print("=" * 50)
+        ImageIterator.from_file(output_buffer).display()
+        
+        print("\nLoss Information:")
+        print("=" * 50)
+        print(f"Reconstruction Loss: {reconstruction_loss:.6f}")
+        print(f"Rotation Loss: {rotation_loss:.6f}")
+        
+    else:
+        # Create figure for matplotlib visualization
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+        
+        # Plot images
+        ax1.imshow(input_img)
+        ax1.set_title('Input Image')
+        ax1.axis('off')
+        
+        ax2.imshow(output_img)
+        ax2.set_title('Reconstructed Image')
+        ax2.axis('off')
+        
+        # Add rotation vectors
+        def draw_rotation_vector(ax, rot, color, label):
+            # Convert Euler angles to rotation matrix
+            rot_matrix = euler_to_rotation_matrix(rot)
+            
+            # Get transformed Z-axis
+            z_axis = np.array([0, 0, 1])
+            transformed_z = rot_matrix @ z_axis
+            
+            # Draw vector
+            ax.arrow(128, 128,  # Start at center
+                     transformed_z[0] * 50, transformed_z[1] * 50,  # Direction
+                     head_width=5, head_length=10, fc=color, ec=color,
+                     label=label)
+        
+        # Draw true rotation vector on input image
+        draw_rotation_vector(ax1, true_rot, 'red', 'True Rotation')
+        
+        # Draw predicted rotation vector on output image
+        draw_rotation_vector(ax2, pred_rot, 'green', 'Predicted Rotation')
+        
+        # Add legends
+        ax1.legend()
+        ax2.legend()
+        
+        # Add title with loss info
+        plt.suptitle(f'Reconstruction Loss: {reconstruction_loss:.6f}\nRotation Loss: {rotation_loss:.6f}')
+        
+        # Show plot
+        plt.show()
 
 def main():
     parser = argparse.ArgumentParser(description='Run autoencoder inference on a single example')
@@ -106,6 +139,7 @@ def main():
     parser.add_argument('--datum_dir', type=str, required=True, help='Directory containing the example (e.g. data/renders/0000)')
     parser.add_argument('--image_size', type=int, default=256, help='Size to resize images to')
     parser.add_argument('--latent_dim', type=int, default=128, help='Dimension of latent space')
+    parser.add_argument('--term', action='store_true', help='Display images in terminal instead of matplotlib window')
     
     args = parser.parse_args()
     
@@ -174,7 +208,8 @@ def main():
         true_rotation,
         pred_rotation,
         reconstruction_loss,
-        rotation_loss
+        rotation_loss,
+        use_terminal=args.term
     )
 
 if __name__ == '__main__':
