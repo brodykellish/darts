@@ -7,16 +7,27 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from pathlib import Path
 import sys
+from PIL import Image
+import torchvision.transforms as transforms
 
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 from src.model.pose_predictor import PosePredictor
 
 class DartPoseDataset(Dataset):
-    def __init__(self, data_dir):
+    def __init__(self, data_dir, image_size=256):
         self.data_dir = Path(data_dir)
         self.example_dirs = sorted([d for d in os.listdir(data_dir) 
                                   if os.path.isdir(os.path.join(data_dir, d))])
+        self.image_size = image_size
+        
+        # Define image transforms
+        self.transform = transforms.Compose([
+            transforms.Resize((image_size, image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                              std=[0.229, 0.224, 0.225])
+        ])
         
     def __len__(self):
         return len(self.example_dirs)
@@ -25,25 +36,16 @@ class DartPoseDataset(Dataset):
         ex_dir = self.example_dirs[idx]
         ex_path = self.data_dir / ex_dir
         
+        # Load image
+        img_path = ex_path / 'image.png'
+        image = Image.open(img_path).convert('RGB')
+        image = self.transform(image)
+        
         # Load rotation data
         rot_path = ex_path / 'rotation.txt'
         rotation = torch.tensor(np.loadtxt(rot_path), dtype=torch.float32)
         
-        # Load camera parameters
-        cam_path = ex_path / 'camera.json'
-        with open(cam_path, 'r') as f:
-            cam_params = json.load(f)
-        
-        # Create input tensor from camera parameters
-        # We'll use camera location and rotation as input features
-        camera_loc = torch.tensor(cam_params['location'], dtype=torch.float32)
-        camera_rot = torch.tensor(cam_params['rotation_euler'], dtype=torch.float32)
-        camera_fov = torch.tensor([cam_params['fov_deg']], dtype=torch.float32)
-        
-        # Combine all camera parameters into a single input tensor
-        x = torch.cat([camera_loc, camera_rot, camera_fov])
-        
-        return x, rotation
+        return image, rotation
 
 def train_epoch(model, train_loader, optimizer, criterion, device):
     model.train()
@@ -85,6 +87,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training')
     parser.add_argument('--lr', type=float, default=0.001, help='Learning rate')
     parser.add_argument('--val_split', type=float, default=0.1, help='Validation split ratio')
+    parser.add_argument('--image_size', type=int, default=256, help='Size to resize images to')
     
     args = parser.parse_args()
     
@@ -96,7 +99,7 @@ def main():
     print(f"Using device: {device}")
     
     # Create dataset
-    dataset = DartPoseDataset(args.data_dir)
+    dataset = DartPoseDataset(args.data_dir, args.image_size)
     
     # Split into train and validation
     val_size = int(len(dataset) * args.val_split)
@@ -104,8 +107,8 @@ def main():
     train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
     
     # Create data loaders
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4)
+    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, num_workers=4)
     
     # Create model
     model = PosePredictor().to(device)
