@@ -161,6 +161,40 @@ def apply_random_rotation(obj):
     obj.rotation_euler = euler
     return obj
 
+def cleanup_materials():
+    """Remove all unused materials."""
+    for material in bpy.data.materials:
+        if not material.users:
+            bpy.data.materials.remove(material)
+
+def cleanup_meshes():
+    """Remove all unused meshes."""
+    for mesh in bpy.data.meshes:
+        if not mesh.users:
+            bpy.data.meshes.remove(mesh)
+
+def cleanup_lights():
+    """Remove all unused lights."""
+    for light in bpy.data.lights:
+        if not light.users:
+            bpy.data.lights.remove(light)
+
+def cleanup_scene():
+    """Clear all objects and unused data from the scene."""
+    # Remove all objects
+    bpy.ops.object.select_all(action='SELECT')
+    bpy.ops.object.delete()
+    
+    # Clean up unused data
+    cleanup_materials()
+    cleanup_meshes()
+    cleanup_lights()
+    
+    # Clear world nodes
+    world = bpy.data.worlds["World"]
+    world.use_nodes = True
+    world.node_tree.nodes.clear()
+
 def render_image(index, camera, output_dir):
     """Render an image and save rotation data."""
     bpy.context.scene.camera = camera

@@ -13,7 +13,7 @@ import argparse
 from src.render.blender_utils import (
     clear_scene, setup_scene, load_stl,
     set_camera, apply_rotation, apply_gray_material, add_basic_light,
-    render_to_file, add_rotation_vector, create_debug_grid
+    render_to_file, add_rotation_vector, create_debug_grid, cleanup_scene
 )
 
 def main():
@@ -78,10 +78,7 @@ def main():
         print(f"Saved: {recon_path}")
         
         # Cleanup
-        bpy.data.objects.remove(light)
-        bpy.data.objects.remove(rot_vec_obj)
-        for obj in debug_objects:
-            bpy.data.objects.remove(obj)
+        cleanup_scene()
 
 if __name__ == "__main__":
     main() 
