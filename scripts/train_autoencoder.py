@@ -11,10 +11,104 @@ import sys
 from PIL import Image
 import torchvision.transforms as transforms
 import time
+import matplotlib.pyplot as plt
 
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
-from src.model.pose_predictor import PosePredictor
+from src.model.autoencoder import Autoencoder
+
+def euler_to_rotation_matrix(euler_angles):
+    """Convert Euler angles to rotation matrix."""
+    # Extract angles
+    x, y, z = euler_angles
+    
+    # Calculate rotation matrices for each axis
+    Rx = np.array([
+        [1, 0, 0],
+        [0, np.cos(x), -np.sin(x)],
+        [0, np.sin(x), np.cos(x)]
+    ])
+    
+    Ry = np.array([
+        [np.cos(y), 0, np.sin(y)],
+        [0, 1, 0],
+        [-np.sin(y), 0, np.cos(y)]
+    ])
+    
+    Rz = np.array([
+        [np.cos(z), -np.sin(z), 0],
+        [np.sin(z), np.cos(z), 0],
+        [0, 0, 1]
+    ])
+    
+    # Combine rotations
+    R = Rz @ Ry @ Rx
+    return R
+
+def visualize_prediction(input_img, output_img, true_rot, pred_rot, epoch, batch_idx, output_dir):
+    """Visualize input, output, and rotation vectors."""
+    # Convert tensors to numpy arrays
+    input_img = input_img.cpu().numpy().transpose(1, 2, 0)
+    output_img = output_img.cpu().numpy().transpose(1, 2, 0)
+    
+    # Denormalize images
+    mean = np.array([0.485, 0.456, 0.406])
+    std = np.array([0.229, 0.224, 0.225])
+    input_img = std * input_img + mean
+    output_img = std * output_img + mean
+    
+    # Clip to valid range
+    input_img = np.clip(input_img, 0, 1)
+    output_img = np.clip(output_img, 0, 1)
+    
+    # Create figure
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+    
+    # Plot images
+    ax1.imshow(input_img)
+    ax1.set_title('Input Image')
+    ax1.axis('off')
+    
+    ax2.imshow(output_img)
+    ax2.set_title('Reconstructed Image')
+    ax2.axis('off')
+    
+    # Add rotation vectors
+    def draw_rotation_vector(ax, rot, color, label):
+        # Convert Euler angles to rotation matrix
+        rot_matrix = euler_to_rotation_matrix(rot)
+        
+        # Get transformed Z-axis
+        z_axis = np.array([0, 0, 1])
+        transformed_z = rot_matrix @ z_axis
+        
+        # Draw vector
+        ax.arrow(128, 128,  # Start at center
+                 transformed_z[0] * 50, transformed_z[1] * 50,  # Direction
+                 head_width=5, head_length=10, fc=color, ec=color,
+                 label=label)
+    
+    # Draw true rotation vector on input image
+    draw_rotation_vector(ax1, true_rot, 'red', 'True Rotation')
+    
+    # Draw predicted rotation vector on output image
+    draw_rotation_vector(ax2, pred_rot, 'green', 'Predicted Rotation')
+    
+    # Add legends
+    ax1.legend()
+    ax2.legend()
+    
+    # Add title with epoch and batch info
+    plt.suptitle(f'Epoch {epoch}, Batch {batch_idx}')
+    
+    # Save visualization
+    os.makedirs(output_dir, exist_ok=True)
+    vis_path = os.path.join(output_dir, f'vis_epoch_{epoch}_batch_{batch_idx}.png')
+    plt.savefig(vis_path)
+    
+    # Show plot and wait for user to close
+    plt.show()
+    plt.close()
 
 class DartPoseDataset(Dataset):
     def __init__(self, data_dir, image_size=256):
@@ -23,10 +117,9 @@ class DartPoseDataset(Dataset):
                                   if os.path.isdir(os.path.join(data_dir, d))])
         self.image_size = image_size
         
-        # Define image transforms with augmentation
+        # Define image transforms
         self.transform = transforms.Compose([
             transforms.Resize((image_size, image_size)),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2),  # Add some color augmentation
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], 
                               std=[0.229, 0.224, 0.225])
@@ -50,7 +143,7 @@ class DartPoseDataset(Dataset):
         
         return image, rotation
 
-def train_epoch(model, train_loader, optimizer, criterion, device, scheduler=None):
+def train_epoch(model, train_loader, optimizer, criterion, device, scheduler, epoch, output_dir):
     model.train()
     total_loss = 0
     num_batches = len(train_loader)
@@ -59,8 +152,8 @@ def train_epoch(model, train_loader, optimizer, criterion, device, scheduler=Non
         data, target = data.to(device), target.to(device)
         
         optimizer.zero_grad()
-        rotation_pred, _ = model(data)  # We only care about rotation for now
-        loss = criterion(rotation_pred, target)
+        output, latent = model(data)
+        loss = criterion(output, data)  # Reconstruction loss
         
         # Gradient clipping for stability
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -72,6 +165,25 @@ def train_epoch(model, train_loader, optimizer, criterion, device, scheduler=Non
             scheduler.step()
         
         total_loss += loss.item()
+        
+        # Visualize every 10 batches
+        if batch_idx % 10 == 0:
+            with torch.no_grad():
+                # Get first image from batch
+                input_img = data[0]
+                output_img = output[0]
+                true_rot = target[0].cpu().numpy()
+                
+                # Get predicted rotation from latent space
+                pred_rot = model.rotation_head(latent[0]).cpu().numpy()
+                
+                # Visualize
+                visualize_prediction(
+                    input_img, output_img,
+                    true_rot, pred_rot,
+                    epoch, batch_idx,
+                    output_dir
+                )
         
         # Print batch progress
         if batch_idx % 10 == 0:
@@ -87,15 +199,15 @@ def validate(model, val_loader, criterion, device):
     with torch.no_grad():
         for data, target in val_loader:
             data, target = data.to(device), target.to(device)
-            rotation_pred, _ = model(data)
-            loss = criterion(rotation_pred, target)
+            output, _ = model(data)
+            loss = criterion(output, data)
             total_loss += loss.item() * data.size(0)
             total_samples += data.size(0)
     
     return total_loss / total_samples
 
 def main():
-    parser = argparse.ArgumentParser(description='Train pose predictor model')
+    parser = argparse.ArgumentParser(description='Train autoencoder model')
     parser.add_argument('--stl_path', type=str, required=True, help='Path to STL file')
     parser.add_argument('--data_dir', type=str, required=True, help='Directory containing training data')
     parser.add_argument('--output_dir', type=str, required=True, help='Directory to save model checkpoints')
@@ -105,11 +217,14 @@ def main():
     parser.add_argument('--val_split', type=float, default=0.1, help='Validation split ratio')
     parser.add_argument('--image_size', type=int, default=256, help='Size to resize images to')
     parser.add_argument('--weight_decay', type=float, default=1e-4, help='Weight decay for regularization')
+    parser.add_argument('--latent_dim', type=int, default=128, help='Dimension of latent space')
     
     args = parser.parse_args()
     
-    # Create output directory
+    # Create output directories
     os.makedirs(args.output_dir, exist_ok=True)
+    vis_dir = os.path.join(args.output_dir, 'visualizations')
+    os.makedirs(vis_dir, exist_ok=True)
     
     # Set device
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -141,7 +256,7 @@ def main():
     )
     
     # Create model
-    model = PosePredictor().to(device)
+    model = Autoencoder(args.latent_dim).to(device)
     
     # Loss function and optimizer
     criterion = nn.MSELoss()
@@ -173,7 +288,7 @@ def main():
         epoch_start_time = time.time()
         
         # Train
-        train_loss = train_epoch(model, train_loader, optimizer, criterion, device, scheduler)
+        train_loss = train_epoch(model, train_loader, optimizer, criterion, device, scheduler, epoch, vis_dir)
         
         # Validate
         val_loss = validate(model, val_loader, criterion, device)
