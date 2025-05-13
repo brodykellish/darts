@@ -7,7 +7,7 @@ from torchvision import transforms
 from PIL import Image
 import numpy as np
 from tqdm import tqdm
-from autoencoder import BasicAutoEncoder
+from src.autoencoder import BasicAutoEncoder
 import logging
 from datetime import datetime
 import argparse
@@ -361,6 +361,3 @@ def main():
     # Save final model
     save_model(model, optimizer, num_epochs-1, val_metrics, output_model_path)
     logger.info(f"Saved final model to {output_model_path}")
-
-if __name__ == "__main__":
-    main() 
