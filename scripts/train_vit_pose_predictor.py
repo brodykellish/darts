@@ -86,9 +86,24 @@ class ViTPoseDataset(Dataset):
         if self.augment:
             image = self.augmentation(image)
 
-        # Load rotation data
-        rot_path = ex_path / 'rotation.txt'
-        rotation = torch.tensor(np.loadtxt(rot_path), dtype=torch.float32)
+        # Try to load quaternion data first, fall back to Euler angles if not available
+        quat_path = ex_path / 'quaternion.txt'
+        if os.path.exists(quat_path):
+            # Load quaternion (w, x, y, z)
+            rotation = torch.tensor(np.loadtxt(quat_path), dtype=torch.float32)
+        else:
+            # Load Euler angles and convert to quaternion
+            rot_path = ex_path / 'rotation.txt'
+            euler_angles = np.loadtxt(rot_path)
+
+            # Convert to quaternion using scipy
+            from scipy.spatial.transform import Rotation
+            rotation_obj = Rotation.from_euler('xyz', euler_angles)
+            quat = rotation_obj.as_quat()  # Returns (x, y, z, w)
+
+            # Reorder to (w, x, y, z) which is more common
+            quat = np.array([quat[3], quat[0], quat[1], quat[2]])
+            rotation = torch.tensor(quat, dtype=torch.float32)
 
         # For now, we'll use a dummy translation (all zeros)
         # since our dataset only contains rotation information

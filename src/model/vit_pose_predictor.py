@@ -19,7 +19,7 @@ class ViTPosePredictor(nn.Module):
                 for param in self.backbone.encoder.layer[i].parameters():
                     param.requires_grad = False
 
-        # Improved rotation head with dropout and batch normalization
+        # Improved rotation head with quaternion output
         self.rotation_head = nn.Sequential(
             nn.Linear(hidden_size, 512),
             nn.BatchNorm1d(512),
@@ -29,7 +29,7 @@ class ViTPosePredictor(nn.Module):
             nn.BatchNorm1d(256),
             nn.ReLU(inplace=True),
             nn.Dropout(dropout_rate),
-            nn.Linear(256, 3)  # 3D rotation (Euler angles)
+            nn.Linear(256, 4)  # Quaternion (w, x, y, z)
         )
 
         # Improved translation head with dropout and batch normalization
@@ -49,10 +49,13 @@ class ViTPosePredictor(nn.Module):
         outputs = self.backbone(x)
         features = outputs.last_hidden_state[:, 0]  # Use CLS token
 
-        rotation = self.rotation_head(features)
+        # Get raw quaternion and normalize it
+        quat = self.rotation_head(features)
+        quat = F.normalize(quat, p=2, dim=1)  # Normalize to unit quaternion
+
         translation = self.translation_head(features)
 
-        return rotation, translation
+        return quat, translation
 
     def get_quaternion(self, euler_angles):
         """Convert Euler angles to quaternion for better rotation representation"""
