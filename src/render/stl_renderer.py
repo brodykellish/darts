@@ -2,12 +2,14 @@
 Utility for rendering rotated STL models with an option to display a unit vector
 indicating the direction of the rotation. This is useful for visually evaluating
 predicted rotations at inference time.
+
+This renderer uses trisurf with fixed lighting for consistent visualization.
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+from matplotlib import colors
 from scipy.spatial.transform import Rotation
 from PIL import Image
 import os
@@ -130,7 +132,7 @@ def add_rotation_vector(ax, rotation, max_range, color='red', scale=0.7, label=N
     # Add a small sphere at the origin if requested
     if add_sphere:
         u, v = np.mgrid[0:2*np.pi:20j, 0:np.pi:10j]
-        sphere_radius = max_range * 0.05  # 5% of max range
+        sphere_radius = max_range * 0.01  # 1% of max range
         x = sphere_radius * np.cos(u) * np.sin(v)
         y = sphere_radius * np.sin(u) * np.sin(v)
         z = sphere_radius * np.cos(v)
@@ -138,14 +140,14 @@ def add_rotation_vector(ax, rotation, max_range, color='red', scale=0.7, label=N
 
     # Plot the vector as an arrow with increased size and prominence
     quiver = ax.quiver(0, 0, 0, scaled_vec[0], scaled_vec[1], scaled_vec[2],
-                      color=color, arrow_length_ratio=0.15, linewidth=3, label=label)
+                      color=color, arrow_length_ratio=0.05, linewidth=1, label=label)
 
     return quiver
 
 def render_mesh_with_vectors(stl_mesh, rotations=None, image_size=256,
                        view_elev=30, view_azim=45, output_path=None, show=True, show_vec=False):
     """
-    Render a mesh with multiple rotation vectors.
+    Render a mesh with multiple rotation vectors using trisurf with fixed lighting.
 
     Args:
         stl_mesh: A numpy-stl mesh object
@@ -173,13 +175,36 @@ def render_mesh_with_vectors(stl_mesh, rotations=None, image_size=256,
     # The vectors attribute has shape (N, 3, 3) where N is the number of triangles
     triangles = stl_mesh.vectors
 
-    # Create a Poly3DCollection
-    mesh_collection = Poly3DCollection(triangles, alpha=0.8, edgecolor='k', linewidth=0.2)
-    mesh_collection.set_facecolor('lightgray')
-    ax.add_collection3d(mesh_collection)
+    # Extract vertices and faces for trisurf
+    # We need to create a list of unique vertices and a list of faces that reference these vertices
+    vertices = triangles.reshape(-1, 3)
+    vertices, inverse = np.unique(vertices.round(decimals=5), axis=0, return_inverse=True)
+    faces = inverse.reshape(-1, 3)
+
+    # Set fixed lighting parameters
+    ax.set_facecolor('white')
+    plt.rcParams['axes.facecolor'] = 'white'
+
+    # Configure lighting
+    ax.set_box_aspect([1, 1, 1])
+
+    # Set fixed lighting parameters
+    mesh_color = np.array([0.7, 0.7, 0.7])  # Light gray
+    
+    # Plot the mesh
+    ax.plot_trisurf(
+        vertices[:, 0], 
+        vertices[:, 1], 
+        vertices[:, 2],
+        triangles=faces,
+        color=mesh_color,
+        edgecolor=None,
+        linewidth=0.2,
+        shade=True,
+        alpha=0.8
+    )
 
     # Calculate the maximum range from the mesh vertices
-    vertices = triangles.reshape(-1, 3)
     max_range = np.max(np.abs(vertices))
 
     # Add rotation vectors if provided
@@ -198,7 +223,7 @@ def render_mesh_with_vectors(stl_mesh, rotations=None, image_size=256,
             quiver = add_rotation_vector(
                 ax, rotation, max_range,
                 color=vec_colors[i],
-                scale=0.7,
+                scale=1.5,
                 label=vec_labels[i],
                 add_sphere=(i == 0)  # Only add sphere for the first vector
             )
