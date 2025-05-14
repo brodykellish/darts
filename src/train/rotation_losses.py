@@ -8,23 +8,23 @@ class RotationLoss(nn.Module):
     Custom loss function for rotation prediction that handles the cyclical nature of rotations.
     This loss can work with both Euler angles and quaternions.
     """
-    def __init__(self, mode='quaternion', reduction='mean'):
+    def __init__(self, rotation_mode='quaternion', reduction='mean'):
         """
         Args:
             mode (str): 'euler' or 'quaternion' - determines the rotation representation
             reduction (str): 'mean', 'sum', or 'none' - reduction method
         """
         super().__init__()
-        self.mode = mode
+        self.rotation_mode = rotation_mode
         self.reduction = reduction
         
     def forward(self, pred, target):
-        if self.mode == 'euler':
+        if self.rotation_mode == 'euler':
             return self.euler_loss(pred, target)
-        elif self.mode == 'quaternion':
+        elif self.rotation_mode == 'quaternion':
             return self.quaternion_loss(pred, target)
         else:
-            raise ValueError(f"Unsupported mode: {self.mode}")
+            raise ValueError(f"Unsupported mode: {self.rotation_mode}")
     
     def euler_loss(self, pred, target):
         """
@@ -102,7 +102,7 @@ class CombinedRotationTranslationLoss(nn.Module):
             translation_weight (float): Weight for the translation loss
         """
         super().__init__()
-        self.rotation_loss = RotationLoss(mode=rotation_mode)
+        self.rotation_loss = RotationLoss(rotation_mode=rotation_mode)
         self.translation_loss = nn.MSELoss()
         self.rotation_weight = rotation_weight
         self.translation_weight = translation_weight

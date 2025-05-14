@@ -42,7 +42,7 @@ class ViTPoseTrainer:
         self.rotation_mode = rotation_mode
 
         # Custom loss functions
-        self.combined_loss = RotationLoss(
+        self.combined_loss = CombinedRotationTranslationLoss(
             rotation_mode=rotation_mode,
             rotation_weight=1.0,
             translation_weight=0.1

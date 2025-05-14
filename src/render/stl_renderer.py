@@ -215,7 +215,7 @@ def render_mesh_with_vectors(stl_mesh, rotations=None, image_size=256,
         vec_colors = [cmap(i) for i in range(len(rotations))]
 
         # Generate labels
-        vec_labels = ["Applied rotation" if i == 0 else f"Rotation {i+1}" for i in range(len(rotations))]
+        vec_labels = ["Applied rotation" if i == 0 else f"predicted {i+1}" for i in range(len(rotations))]
 
         # Add each rotation vector
         quivers = []

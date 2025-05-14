@@ -21,6 +21,7 @@ from torchvision import transforms
 # Add src to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 from src.model.vit_pose_predictor import ViTPosePredictor
+from src.render.stl_renderer import load_and_normalize_stl, render_mesh_with_vectors
 
 
 def load_model(model_path):
@@ -46,7 +47,7 @@ def load_model(model_path):
     return model
 
 
-def load_sample(data_dir, sample_idx, use_quaternion=True):
+def load_sample(data_dir, sample_idx):
     """
     Load a sample from the dataset.
 
@@ -67,20 +68,12 @@ def load_sample(data_dir, sample_idx, use_quaternion=True):
     img_path = os.path.join(sample_dir, "image.png")
     image = Image.open(img_path).convert('RGB')
 
-    # Try to load quaternion if requested
-    is_quaternion = False
-    if use_quaternion:
-        quat_path = os.path.join(sample_dir, "quaternion.txt")
-        if os.path.exists(quat_path):
-            rotation = np.loadtxt(quat_path)
-            is_quaternion = True
-            return image, rotation, is_quaternion
+    # Try to load quaternion
+    quat_path = os.path.join(sample_dir, "quaternion.txt")
+    rotation = np.loadtxt(quat_path)
 
-    # Fall back to Euler angles
-    rot_path = os.path.join(sample_dir, "rotation.txt")
-    rotation = np.loadtxt(rot_path)
+    return image, rotation
 
-    return image, rotation, is_quaternion
 
 
 def predict_rotation(model, image, image_size=224):
@@ -115,7 +108,7 @@ def predict_rotation(model, image, image_size=224):
     return pred_rot
 
 
-def visualize_rotations(vertices, faces, true_rot, pred_rot=None, is_quaternion=False, figsize=(10, 5)):
+def visualize_rotations(stl_mesh, true_rot, pred_rot=None):
     """
     Visualize true and predicted rotations.
 
@@ -128,103 +121,20 @@ def visualize_rotations(vertices, faces, true_rot, pred_rot=None, is_quaternion=
         figsize: Figure size
     """
     # Convert to rotation objects
-    if is_quaternion:
-        # For quaternions in (w, x, y, z) format, convert to scipy's (x, y, z, w) format
-        true_quat = np.array([true_rot[1], true_rot[2], true_rot[3], true_rot[0]])
-        true_rotation = Rotation.from_quat(true_quat)
+    # For quaternions in (w, x, y, z) format, convert to scipy's (x, y, z, w) format
+    true_quat = np.array([true_rot[1], true_rot[2], true_rot[3], true_rot[0]])
+    true_rotation = Rotation.from_quat(true_quat)
 
-        if pred_rot is not None:
-            pred_quat = np.array([pred_rot[1], pred_rot[2], pred_rot[3], pred_rot[0]])
-            pred_rotation = Rotation.from_quat(pred_quat)
-    else:
-        # For Euler angles
-        true_rotation = Rotation.from_euler('xyz', true_rot)
-
-        if pred_rot is not None:
-            pred_rotation = Rotation.from_euler('xyz', pred_rot)
-
-    # Set up figure
     if pred_rot is not None:
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=figsize, subplot_kw={'projection': '3d'})
-        axes = [ax1, ax2]
-        titles = ['True Rotation', 'Predicted Rotation']
-        rotations = [true_rotation, pred_rotation]
-    else:
-        fig, ax = plt.subplots(1, 1, figsize=(figsize[0]//2, figsize[1]), subplot_kw={'projection': '3d'})
-        axes = [ax]
-        titles = ['True Rotation']
-        rotations = [true_rotation]
+        pred_quat = np.array([pred_rot[1], pred_rot[2], pred_rot[3], pred_rot[0]])
+        pred_rotation = Rotation.from_quat(pred_quat)
 
-    # Plot each rotation
-    for ax, title, rotation in zip(axes, titles, rotations):
-        # Apply rotation to vertices
-        rotated_vertices = rotation.apply(vertices)
-
-        # Plot the mesh
-        ax.plot_trisurf(
-            rotated_vertices[:, 0],
-            rotated_vertices[:, 1],
-            rotated_vertices[:, 2],
-            triangles=faces,
-            color='lightgray',
-            edgecolor=None,
-            linewidth=0.2,
-            alpha=0.8
-        )
-
-        # Add rotation vector (unit vector along z-axis)
-        origin = np.zeros(3)
-        z_axis = np.array([0, 0, 1])
-        rotated_z = rotation.apply(z_axis)
-
-        # Plot rotation vector
-        ax.quiver(
-            origin[0], origin[1], origin[2],
-            rotated_z[0], rotated_z[1], rotated_z[2],
-            color='red', linewidth=2, arrow_length_ratio=0.15
-        )
-
-        # Set equal aspect ratio and remove axes
-        ax.set_box_aspect([1, 1, 1])
-        ax.set_xlim([-1.5, 1.5])
-        ax.set_ylim([-1.5, 1.5])
-        ax.set_zlim([-1.5, 1.5])
-        ax.set_title(title)
-
-    plt.tight_layout()
-    return fig
-
-
-def load_and_normalize_stl(file_path):
-    """
-    Load an STL file and normalize it to be centered at the origin with unit scale.
-
-    Args:
-        file_path: Path to the STL file
-
-    Returns:
-        vertices and faces arrays
-    """
-    from stl import mesh
-
-    # Load the STL file
-    stl_mesh = mesh.Mesh.from_file(file_path)
-
-    # Extract vertices and faces
-    triangles = stl_mesh.vectors
-    vertices_all = triangles.reshape(-1, 3)
-    vertices, inverse = np.unique(vertices_all.round(decimals=5), axis=0, return_inverse=True)
-    faces = inverse.reshape(-1, 3)
-
-    # Center at origin
-    center = np.mean(vertices, axis=0)
-    vertices = vertices - center
-
-    # Scale to unit size
-    scale = np.max(np.abs(vertices))
-    vertices = vertices / scale
-
-    return vertices, faces
+    render_mesh_with_vectors(
+        stl_mesh=stl_mesh,
+        rotations=[true_rotation, pred_rotation],
+        show=True,
+        show_vec=True
+    )
 
 
 def main():
@@ -235,7 +145,6 @@ def main():
     parser.add_argument('--model_path', type=str, required=True, help='Path to the model checkpoint')
     parser.add_argument('--sample_idx', type=int, default=0, help='Index of the sample to visualize')
     parser.add_argument('--output_path', type=str, default=None, help='Path to save the visualization')
-    parser.add_argument('--use_quaternion', action='store_true', help='Use quaternion representation')
 
     args = parser.parse_args()
 
@@ -245,46 +154,36 @@ def main():
 
     # Load sample
     print(f"Loading sample {args.sample_idx} from {args.data_dir}...")
-    image, true_rot, is_quaternion = load_sample(args.data_dir, args.sample_idx, args.use_quaternion)
+    image, true_rot = load_sample(args.data_dir, args.sample_idx)
 
     # Predict rotation
     print("Predicting rotation...")
     pred_rot = predict_rotation(model, image)
 
     # Print rotations
-    if is_quaternion:
-        print(f"True rotation (quaternion, wxyz): {true_rot}")
-        print(f"Predicted rotation (quaternion, wxyz): {pred_rot}")
+    print(f"True rotation (quaternion, wxyz): {true_rot}")
+    print(f"Predicted rotation (quaternion, wxyz): {pred_rot}")
 
-        # Calculate quaternion distance (dot product)
-        # Ensure unit quaternions
-        true_quat_norm = true_rot / np.linalg.norm(true_rot)
-        pred_quat_norm = pred_rot / np.linalg.norm(pred_rot)
+    # Calculate quaternion distance (dot product)
+    # Ensure unit quaternions
+    true_quat_norm = true_rot / np.linalg.norm(true_rot)
+    pred_quat_norm = pred_rot / np.linalg.norm(pred_rot)
 
-        # The absolute dot product gives the cosine of half the rotation angle between the orientations
-        dot_product = np.abs(np.dot(true_quat_norm, pred_quat_norm))
-        dot_product = min(dot_product, 1.0)  # Clamp to avoid numerical issues
+    # The absolute dot product gives the cosine of half the rotation angle between the orientations
+    dot_product = np.abs(np.dot(true_quat_norm, pred_quat_norm))
+    dot_product = min(dot_product, 1.0)  # Clamp to avoid numerical issues
 
-        # Calculate the angle between the quaternions
-        angle_error = 2 * np.arccos(dot_product)
-        print(f"Quaternion angle error: {angle_error:.4f} radians ({np.degrees(angle_error):.2f} degrees)")
-    else:
-        print(f"True rotation (Euler angles, xyz): {true_rot}")
-        print(f"Predicted rotation (Euler angles, xyz): {pred_rot}")
-
-        # Calculate error for Euler angles
-        # This is a simplistic approach - better to convert to a common representation first
-        error = np.abs(true_rot - pred_rot)
-        mean_error = np.mean(error)
-        print(f"Mean absolute error: {mean_error:.4f} radians ({np.degrees(mean_error):.2f} degrees)")
+    # Calculate the angle between the quaternions
+    angle_error = 2 * np.arccos(dot_product)
+    print(f"Quaternion angle error: {angle_error:.4f} radians ({np.degrees(angle_error):.2f} degrees)")
 
     # Load and normalize STL
     print(f"Loading STL from {args.stl_path}...")
-    vertices, faces = load_and_normalize_stl(args.stl_path)
+    stl_mesh = load_and_normalize_stl(args.stl_path)
 
     # Visualize
     print("Generating visualization...")
-    fig = visualize_rotations(vertices, faces, true_rot, pred_rot, is_quaternion)
+    fig = visualize_rotations(stl_mesh, true_rot, pred_rot)
 
     # Save or show
     if args.output_path:
