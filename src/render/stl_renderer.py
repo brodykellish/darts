@@ -13,7 +13,7 @@ from PIL import Image
 import os
 from stl import mesh
 
-def load_stl(file_path):
+def load_stl_mesh(file_path):
     """
     Load an STL file using numpy-stl.
 
@@ -47,6 +47,9 @@ def normalize_mesh(stl_mesh):
     normalized_mesh.vectors /= scale
 
     return normalized_mesh
+
+def load_and_normalize_stl(file_path):
+    return normalize_mesh(load_stl_mesh(file_path))
 
 def apply_rotation(stl_mesh, rotation):
     """
@@ -140,8 +143,7 @@ def add_rotation_vector(ax, rotation, max_range, color='red', scale=0.7, label=N
     return quiver
 
 def render_mesh_with_vectors(stl_mesh, rotations=None, image_size=256,
-                       view_elev=30, view_azim=45, output_path=None, show=True,
-                       vec_colors=None, vec_labels=None, vec_scale=0.7, add_legend=True):
+                       view_elev=30, view_azim=45, output_path=None, show=True, show_vec=False):
     """
     Render a mesh with multiple rotation vectors.
 
@@ -153,10 +155,7 @@ def render_mesh_with_vectors(stl_mesh, rotations=None, image_size=256,
         view_azim: Azimuth angle for the view
         output_path: Path to save the rendered image (if None, the image is not saved)
         show: Whether to display the rendered image
-        vec_colors: List of colors for the rotation vectors (default: auto-generated)
-        vec_labels: List of labels for the rotation vectors (default: None)
-        vec_scale: Scale factor for the rotation vectors as a fraction of the max range (default: 0.7)
-        add_legend: Whether to add a legend for the vectors (default: True)
+        show_vec: Whether to display rotation vectors
 
     Returns:
         The rendered image as a numpy array
@@ -184,22 +183,14 @@ def render_mesh_with_vectors(stl_mesh, rotations=None, image_size=256,
     max_range = np.max(np.abs(vertices))
 
     # Add rotation vectors if provided
-    if rotations:
-        # Generate colors if not provided
-        if vec_colors is None:
-            # Use a colormap to generate distinct colors
-            cmap = plt.cm.get_cmap('tab10', len(rotations))
-            vec_colors = [cmap(i) for i in range(len(rotations))]
-        elif isinstance(vec_colors, str):
-            # If a single color is provided, use it for all vectors
-            vec_colors = [vec_colors] * len(rotations)
+    if rotations and show_vec:
+        # Generate colors
+        # Use a colormap to generate distinct colors
+        cmap = plt.cm.get_cmap('tab10', len(rotations))
+        vec_colors = [cmap(i) for i in range(len(rotations))]
 
-        # Generate labels if not provided
-        if vec_labels is None:
-            vec_labels = [f"Rotation {i+1}" for i in range(len(rotations))]
-        elif isinstance(vec_labels, str):
-            # If a single label is provided, use it for all vectors
-            vec_labels = [vec_labels] * len(rotations)
+        # Generate labels
+        vec_labels = ["Applied rotation" if i == 0 else f"Rotation {i+1}" for i in range(len(rotations))]
 
         # Add each rotation vector
         quivers = []
@@ -207,18 +198,19 @@ def render_mesh_with_vectors(stl_mesh, rotations=None, image_size=256,
             quiver = add_rotation_vector(
                 ax, rotation, max_range,
                 color=vec_colors[i],
-                scale=vec_scale,
+                scale=0.7,
                 label=vec_labels[i],
                 add_sphere=(i == 0)  # Only add sphere for the first vector
             )
             quivers.append(quiver)
 
-        # Add a legend if requested and there are multiple vectors
-        if add_legend and len(rotations) > 1:
+        # Add a legend if there are multiple vectors
+        if len(rotations) > 1:
             ax.legend()
 
     # Set equal aspect ratio
     ax.set_box_aspect([1, 1, 1])
+    ax.set_axis_off()
 
     # Set axis limits based on the mesh size
     ax.set_xlim(-max_range, max_range)
@@ -227,9 +219,6 @@ def render_mesh_with_vectors(stl_mesh, rotations=None, image_size=256,
 
     # Set view angle
     ax.view_init(elev=view_elev, azim=view_azim)
-
-    # Remove axes
-    ax.set_axis_off()
 
     # Render the image
     fig.tight_layout(pad=0)
@@ -263,87 +252,31 @@ def render_mesh_with_vectors(stl_mesh, rotations=None, image_size=256,
 
     return image
 
-def render_mesh(stl_mesh, rotation=None, show_vec=False, image_size=256,
-                view_elev=30, view_azim=45, output_path=None, show=True,
-                vec_color='red', vec_scale=0.7):
+def render_mesh(stl_mesh, rotation=None, image_size=256, show=False,
+                view_elev=30, view_azim=45, output_path=None):
     """
-    Render a mesh with optional rotation and direction vector.
+    Render a mesh with optional rotation.
 
     Args:
         stl_mesh: A numpy-stl mesh object
         rotation: A scipy.spatial.transform.Rotation object or Euler angles in radians
-        show_vec: Whether to display a unit vector indicating the direction of the rotation
         image_size: Size of the rendered image (square)
+        show: Whether to display the rendered image
         view_elev: Elevation angle for the view
         view_azim: Azimuth angle for the view
         output_path: Path to save the rendered image (if None, the image is not saved)
-        show: Whether to display the rendered image
-        vec_color: Color of the rotation vector (default: 'red')
-        vec_scale: Scale factor for the rotation vector as a fraction of the max range (default: 0.7)
 
     Returns:
         The rendered image as a numpy array
     """
     # Use the new render_mesh_with_vectors function
-    if show_vec and rotation is not None:
-        return render_mesh_with_vectors(
-            stl_mesh=stl_mesh,
-            rotations=[rotation],
-            image_size=image_size,
-            view_elev=view_elev,
-            view_azim=view_azim,
-            output_path=output_path,
-            show=show,
-            vec_colors=[vec_color],
-            vec_labels=None,
-            vec_scale=vec_scale,
-            add_legend=False
-        )
-    else:
-        return render_mesh_with_vectors(
-            stl_mesh=stl_mesh,
-            rotations=[rotation] if rotation is not None else None,
-            image_size=image_size,
-            view_elev=view_elev,
-            view_azim=view_azim,
-            output_path=output_path,
-            show=show,
-            add_legend=False
-        )
-
-def render_mesh_with_true_pred(stl_mesh, true_rotation, pred_rotation, image_size=256,
-                           view_elev=30, view_azim=45, output_path=None, show=True,
-                           true_color='red', pred_color='blue', vec_scale=0.7):
-    """
-    Render a mesh with both true and predicted rotation vectors on the same chart.
-
-    Args:
-        stl_mesh: A numpy-stl mesh object
-        true_rotation: True rotation as Euler angles in radians or Rotation object
-        pred_rotation: Predicted rotation as Euler angles in radians or Rotation object
-        image_size: Size of the rendered image (square)
-        view_elev: Elevation angle for the view
-        view_azim: Azimuth angle for the view
-        output_path: Path to save the rendered image (if None, the image is not saved)
-        show: Whether to display the rendered image
-        true_color: Color of the true rotation vector (default: 'red')
-        pred_color: Color of the predicted rotation vector (default: 'blue')
-        vec_scale: Scale factor for the rotation vectors as a fraction of the max range (default: 0.7)
-
-    Returns:
-        The rendered image as a numpy array
-    """
-    # Use the render_mesh_with_vectors function with both rotations
     return render_mesh_with_vectors(
         stl_mesh=stl_mesh,
-        rotations=[true_rotation, pred_rotation],
+        rotations=[rotation] if rotation is not None else None,
         image_size=image_size,
         view_elev=view_elev,
         view_azim=view_azim,
         output_path=output_path,
         show=show,
-        vec_colors=[true_color, pred_color],
-        vec_labels=["True", "Predicted"],
-        vec_scale=vec_scale,
-        add_legend=True
+        show_vec=False
     )

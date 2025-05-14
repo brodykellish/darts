@@ -32,11 +32,12 @@ def generate_dataset(stl_path, output_dir, num_samples=1000, image_size=256):
     # Create the command
     cmd = [
         "python", 
-        "scripts/generate_simple_dataset.py",
+        "scripts/generate_dataset.py",
         "--stl_path", stl_path,
         "--output_dir", output_dir,
         "--num_samples", str(num_samples),
-        "--image_size", str(image_size)
+        "--image_size", str(image_size),
+        "--rotation_method", "fibonacci",
     ]
     
     # Run the command
@@ -70,7 +71,8 @@ def train_model(data_dir, output_dir, epochs=50, batch_size=32, image_size=224):
         "--epochs", str(epochs),
         "--batch_size", str(batch_size),
         "--image_size", str(image_size),
-        "--log_interval", "5"
+        "--log_interval", "5",
+        "--rotation_mode", "quaternion"
     ]
     
     # Run the command

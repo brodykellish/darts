@@ -120,13 +120,13 @@ class ViTPoseTrainer:
     """Enhanced training pipeline for ViTPosePredictor with custom loss and LR scheduling."""
 
     def __init__(self, model, device='cuda' if torch.cuda.is_available() else 'cpu',
-                 learning_rate=1e-4, weight_decay=1e-4, rotation_mode='euler'):
+                 learning_rate=1e-4, weight_decay=1e-4, rotation_mode='quaternion'):
         self.model = model.to(device)
         self.device = device
         self.rotation_mode = rotation_mode
 
         # Custom loss functions
-        self.combined_loss = CombinedRotationTranslationLoss(
+        self.combined_loss = RotationLoss(
             rotation_mode=rotation_mode,
             rotation_weight=1.0,
             translation_weight=0.1
@@ -401,7 +401,7 @@ def main():
                       help='Dropout rate for model regularization')
     parser.add_argument('--freeze_layers', type=int, default=8,
                       help='Number of backbone layers to freeze')
-    parser.add_argument('--rotation_mode', type=str, default='euler', choices=['euler', 'quaternion'],
+    parser.add_argument('--rotation_mode', type=str, default='quaternion', choices=['euler', 'quaternion'],
                       help='Rotation representation mode')
     parser.add_argument('--seed', type=int, default=42,
                       help='Random seed for reproducibility')
