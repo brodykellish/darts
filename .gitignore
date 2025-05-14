@@ -76,5 +76,6 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-
+*dataset/*
 data/*
+*model*/
