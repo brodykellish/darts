@@ -57,9 +57,6 @@ dart_dataset/
 *.png
 *.jpg
 *.jpeg
-*model*
-*data*
-*checkpoint*
 
 # Distribution / packaging
 .Python
