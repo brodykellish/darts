@@ -179,7 +179,7 @@ class CombinedRotationTranslationLoss(nn.Module):
                                               Default is [0, 0, 1] (z-axis)
         """
         super().__init__()
-        self.rotation_loss = RotationLoss(mode=rotation_mode)
+        self.rotation_loss = RotationLoss(rotation_mode=rotation_mode)
         self.translation_loss = nn.MSELoss()
         self.rotation_weight = rotation_weight
         self.translation_weight = translation_weight
