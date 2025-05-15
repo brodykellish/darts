@@ -36,7 +36,7 @@ class ViTPoseTrainer:
     """Enhanced training pipeline for ViTPosePredictor with custom loss and LR scheduling."""
 
     def __init__(self, model, device='cuda' if torch.cuda.is_available() else 'cpu',
-                 learning_rate=1e-4, weight_decay=1e-4, rotation_mode='quaternion'):
+                 learning_rate=1e-4, weight_decay=1e-4, rotation_mode='quaternion', checkpoints=False):
         self.model = model.to(device)
         self.device = device
         self.rotation_mode = rotation_mode
@@ -45,7 +45,7 @@ class ViTPoseTrainer:
         self.combined_loss = CombinedRotationTranslationLoss(
             rotation_mode=rotation_mode,
             rotation_weight=1.0,
-            translation_weight=0.1
+            translation_weight=0.01
         )
 
         # Optimizer with increased weight decay
@@ -140,7 +140,7 @@ class ViTPoseTrainer:
 
         return avg_loss, avg_rot_loss, avg_trans_loss
 
-    def train(self, train_loader, val_loader, num_epochs, save_dir, log_interval=1, patience=10):
+    def train(self, train_loader, val_loader, num_epochs, save_dir, log_interval=1, patience=10, checkpoints=False):
         """
         Train the model for multiple epochs with early stopping and learning rate scheduling.
 
@@ -230,14 +230,15 @@ class ViTPoseTrainer:
 
             # Save checkpoint at log interval
             if (epoch + 1) % log_interval == 0:
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': self.model.state_dict(),
-                    'optimizer_state_dict': self.optimizer.state_dict(),
-                    'scheduler_state_dict': self.scheduler.state_dict(),
-                    'train_loss': train_loss,
-                    'val_loss': val_loss,
-                }, os.path.join(save_dir, f'checkpoint_epoch_{epoch+1}.pth'))
+                if checkpoints:
+                    torch.save({
+                        'epoch': epoch,
+                        'model_state_dict': self.model.state_dict(),
+                        'optimizer_state_dict': self.optimizer.state_dict(),
+                        'scheduler_state_dict': self.scheduler.state_dict(),
+                        'train_loss': train_loss,
+                        'val_loss': val_loss,
+                    }, os.path.join(save_dir, f'checkpoint_epoch_{epoch+1}.pth'))
 
                 # Save log data
                 with open(log_file, 'w') as f:
@@ -321,6 +322,8 @@ def main():
                       help='Rotation representation mode')
     parser.add_argument('--seed', type=int, default=42,
                       help='Random seed for reproducibility')
+    parser.add_argument('--checkpoints', action='store_true',
+                      help='Whether to save checkpoints during training')
 
     args = parser.parse_args()
 
@@ -411,7 +414,8 @@ def main():
         num_epochs=args.epochs,
         save_dir=args.output_dir,
         log_interval=args.log_interval,
-        patience=args.patience
+        patience=args.patience,
+        checkpoints=args.checkpoints
     )
 
     # Print training summary
